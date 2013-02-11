@@ -77,10 +77,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="KeyEvent.hpp" />
+    <ClInclude Include="sha4.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KeyEvent.cpp" />
     <ClCompile Include="Scanner.cpp" />
+    <ClCompile Include="sha4.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Manifest\ETW.rc" />
