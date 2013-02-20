@@ -116,6 +116,7 @@ struct Data
 	NTSTATUS err_num;
 	UNICODE_STRING dll;
 	ANSI_STRING func;
+	DWORD main_thread;
 	NTSTATUS (NTAPI *LdrLoadDll)(PWCHAR PathToFile, ULONG *Flags, UNICODE_STRING *ModuleFileName, HMODULE *ModuleHandle); 
 	NTSTATUS (NTAPI *LdrGetProcedureAddress)(HMODULE ModuleHandle, PANSI_STRING FunctionName, WORD Oridinal, PVOID *FunctionAddress);
 	
@@ -125,7 +126,7 @@ struct Data
 #endif
 };
 
-typedef DWORD (_cdecl *after_injection_t)(HMODULE module);
+typedef DWORD (_cdecl *after_injection_t)(HMODULE module, DWORD main_thread);
 
 #pragma code_seg(push, ".cave")
 #pragma runtime_checks("", off)
@@ -160,7 +161,7 @@ extern "C" static void _fastcall code_cave(Data &data)
 		goto exit;
 	}
 
-	auto result = func(module);
+	auto result = func(module, data.main_thread);
 	
 	if(result != ERROR_SUCCESS)
 	{
@@ -226,6 +227,8 @@ void run_code_cave()
 	LOAD_ADDRESS(RtlInitUnicodeStringFunc, ntdll, RtlInitUnicodeString);
 
 	data.error = IE_ERROR_NONE;
+
+	data.main_thread = pi.dwThreadId;
 
 	RtlInitUnicodeStringFunc(&data.dll, dll_name.c_str());
 	RtlInitAnsiStringFunc(&data.func, func_name);

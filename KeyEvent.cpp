@@ -2,51 +2,122 @@
 
 REGHANDLE provider;
 
-void _stdcall private_key(const char *key)
+#define Terminate(...) do { char buffer[500]; sprintf_s(buffer, __VA_ARGS__); throw buffer; } while(0)
+
+enum BreakpointType
 {
+	BreakpointCode = 0,
+	BreakpointReadWrite,
+	BreakpointWrite
+};
+
+enum BreakpointSize
+{
+	BreakpointByte = 0,
+	BreakpointWord,
+	BreakpointDword,
+	BreakpointQword
+};
+
+void CreateBreakpoint(CONTEXT* Context, void* Address, enum BreakpointType Type, enum BreakpointSize Size)
+{
+	DWORD* DrAddresses[] =
+	{
+		&Context->Dr0,
+		&Context->Dr1,
+		&Context->Dr2,
+		&Context->Dr3
+	};
+
+	int i;
+
+	int FirstFree = -1;
+
+	for(i = 0; i < 4; i++)
+	{
+		if(!(Context->Dr7 & (1 << (i * 2))))
+		{
+			FirstFree = i;
+			break;
+		}
+	}
+
+	if(FirstFree == -1)
+		Terminate("No more free breakpoints in thread %u\n", GetCurrentThreadId());
+
+	*DrAddresses[FirstFree] = (DWORD)Address;
+
+	Context->Dr7 |= (1 << (FirstFree * 2));
+
+	Context->Dr7 &= ~(0xF << (FirstFree * 4 + 16));
+
+	Context->Dr7 |= ((Type & 3) | ((Size & 3) << 2)) << (FirstFree * 4 + 16);
+}
+
+void CreateBreakpointInThread(unsigned int ThreadId, void* Address, enum BreakpointType Type, enum BreakpointSize Size)
+{
+	HANDLE Thread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, 0, ThreadId);
+	CONTEXT Context; 
+
+	if(!Thread)
+		Terminate("CreateBreakpointInThread: Unable to get thread handle from thread %u (%u).\n", ThreadId, GetLastError());
+
+	if(SuspendThread(Thread) == -1)
+		Terminate("CreateBreakpointInThread: Unable to suspend thread %u (%u).\n", ThreadId, GetLastError());
+
+	Context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+
+	if(!GetThreadContext(Thread, &Context))
+		Terminate("CreateBreakpointInThread: Unable to get thread context from thread %u (%u).\n", ThreadId, GetLastError());
+
+	CreateBreakpoint(&Context, Address, Type, Size);
+
+	if(!SetThreadContext(Thread, &Context))
+		Terminate("CreateBreakpointInThread: Unable to set thread context to thread %u (%u).\n", ThreadId, GetLastError());
+
+	if(ResumeThread(Thread) == -1)
+		Terminate("CreateBreakpointInThread: Unable to resume thread %u (%u).\n", ThreadId, GetLastError());
+
+	CloseHandle(Thread);
+}
+
+void *hooked_address;
+
+void (__stdcall *ZwContinue)(CONTEXT* Context, int Unknown);
+
+LONG NTAPI exception_handler(struct _EXCEPTION_POINTERS *ExceptionInfo)
+{
+	if(ExceptionInfo->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP)
+		return EXCEPTION_CONTINUE_SEARCH;
+
+	if(ExceptionInfo->ExceptionRecord->ExceptionAddress != hooked_address)
+		return EXCEPTION_CONTINUE_SEARCH;
+
 	EVENT_DATA_DESCRIPTOR data;
 
 	unsigned char output[0x40];
+
+	auto context = ExceptionInfo->ContextRecord;
+
+	auto key = *(const unsigned char **)(context->Ebp + 8);
 
 	sha4((const unsigned char *)key, 0x200, output, false);
 
 	EventDataDescCreate(&data, output, 0x40);
 
 	EventWrite(provider, &PrivateKey, 1, &data);
+
+	// do pop ebp
+	context->Ebp = *(DWORD *)context->Esp;
+	context->Esp += 4;
+	context->Eip++;
+
+	ZwContinue(ExceptionInfo->ContextRecord, 0);
+
+	return EXCEPTION_CONTINUE_SEARCH;
 }
 
-void __declspec(naked) generate_key_pair_stub()
-{
-	__asm
-	{
-		pusha
-		push    [ebp+8]
-		call private_key
-		popa
-		pop     esi
-		pop     ebp
-		retn    18h
-	}
-}
-
-void patch_function(char *address, void *function_pointer)
-{
-	unsigned function_address = reinterpret_cast<unsigned>(function_pointer) - reinterpret_cast<unsigned>(address) - 5;
-	std::string replacement_string = std::string((char *)&function_address, 4);
-	std::string replacement = "\xe9" + replacement_string;
-
-	DWORD old_protection;
-	if(VirtualProtect(address, replacement.length(), PAGE_EXECUTE_READWRITE, &old_protection) == 0)
-		throw "Unable to unprotect code";
-
-	std::memcpy(address, replacement.c_str(), replacement.length());
-
-	DWORD unused;
-	if(VirtualProtect(address, replacement.length(), old_protection, &unused) == 0)
-		throw "Unable to reprotect code";
-}
-
-extern "C" __declspec(dllexport) DWORD after_injection(HMODULE module)
+extern "C" __declspec(dllexport) DWORD after_injection(HMODULE module, DWORD main_thread)
 {
 	try
 	{
@@ -59,7 +130,14 @@ extern "C" __declspec(dllexport) DWORD after_injection(HMODULE module)
 
 		char *result = (char *)find_pattern(GetModuleHandle(0), ".text", (char *)pattern, mask, sizeof(pattern));
 
-		patch_function(result + sizeof(pattern) - 5, generate_key_pair_stub);
+		ZwContinue = (decltype(ZwContinue))GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwContinue");
+
+		if(!AddVectoredExceptionHandler(1, &exception_handler))
+			throw "Unable to register vectored exception handler";
+
+		hooked_address = result + sizeof(pattern) - 4;
+
+		CreateBreakpointInThread(main_thread, hooked_address, BreakpointCode, BreakpointByte);
 	}
 	catch(const char *error)
 	{

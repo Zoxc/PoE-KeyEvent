@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+	<Product Id="c9ac141f-2570-4f26-a407-f9e775a73f58" Name="PoEKey" Language="1033" Version="1.0.0" Manufacturer="Zoxc" UpgradeCode="83d66633-40b4-4ec5-b428-7fb6ad69698a">
+		<Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+
+    <Property Id="POE_PATH">
+      <RegistrySearch Id="RS.PoEPath" Root="HKCU" Key="Software\GrindingGearGames\Path of Exile" Name="InstallLocation" Type="raw" />
+    </Property>
+
+    <Condition Message="Path of Exile must be installed">
+      Installed OR POE_PATH
+    </Condition>
+    
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+
+		<Feature Id="ProductFeature" Title="PoEKey Provider" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+		</Feature>
+	</Product>
+
+	<Fragment>
+		<Directory Id="TARGETDIR" Name="SourceDir">
+			<Directory Id="ProgramFilesFolder">
+				<Directory Id="INSTALLFOLDER" Name="PoEKey" />
+			</Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+		</Directory>
+    
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="ProductComponent" Guid="44fa30d3-a99c-4966-89c5-22cb15019066">
+        <File Id="Executable" Source='$(var.Injector.TargetPath)' KeyPath='yes'>
+          <Shortcut Id='Shortcut' Directory='DesktopFolder' WorkingDirectory='POE_PATH' Arguments='"[POE_PATH]Client.exe"' Name='PoE Key Event Launcher' Advertise='yes' />
+        </File>
+        <File Id="Provider" Source='$(var.KeyEvent.TargetPath)' />
+        <File Id="Manifest" Name="KeyEvent.man" Source='$(var.SolutionDir)\Manifest\ETW.man'>
+          <util:EventManifest MessageFile="[#Provider]" ParameterFile="[#Provider]" ResourceFile="[#Provider]" />
+        </File>
+      </Component>
+		</ComponentGroup>
+	</Fragment>
+</Wix>
