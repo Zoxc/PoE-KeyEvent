@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
-	<Product Id="c9ac141f-2570-4f26-a407-f9e775a73f58" Name="PoEKey" Language="1033" Version="1.0.0" Manufacturer="Zoxc" UpgradeCode="83d66633-40b4-4ec5-b428-7fb6ad69698a">
+	<Product Id="c9ac141f-2570-4f26-a407-f9e775a73f58" Name="PoEKey" Language="1033" Version="1.0.1" Manufacturer="Zoxc" UpgradeCode="83d66633-40b4-4ec5-b428-7fb6ad69698a">
 		<Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
     <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
 

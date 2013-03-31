@@ -2,7 +2,7 @@
 
 REGHANDLE provider;
 
-#define Terminate(...) do { char buffer[500]; sprintf_s(buffer, __VA_ARGS__); throw buffer; } while(0)
+#define Terminate(...) do { char *buffer = new char[500]; sprintf_s(buffer, 500, __VA_ARGS__); throw buffer; } while(0)
 
 enum BreakpointType
 {
